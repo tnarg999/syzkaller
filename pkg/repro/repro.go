@@ -325,14 +325,16 @@ func (ctx *context) extractProg(entries []*prog.LogEntry) (*Result, error) {
 			ctx.reproLogf(3, "found reproducer with %d syscalls", len(res.Prog.Calls))
 			return res, nil
 		}
+	}
 
+	for _, timeout := range ctx.testTimeouts {
 		// Don't try bisecting if there's only one entry.
 		if len(entries) == 1 {
 			continue
 		}
 
 		// Execute all programs and bisect the log to find multiple guilty programs.
-		res, err = ctx.extractProgBisect(entries, timeout)
+		res, err := ctx.extractProgBisect(entries, timeout)
 		if err != nil {
 			return nil, err
 		}
@@ -350,6 +352,7 @@ func (ctx *context) extractProgSingle(entries []*prog.LogEntry, duration time.Du
 	ctx.reproLogf(3, "single: executing %d programs separately with timeout %s", len(entries), duration)
 
 	opts := ctx.startOpts
+
 	for _, ent := range entries {
 		opts.Fault = ent.Fault
 		opts.FaultCall = ent.FaultCall
