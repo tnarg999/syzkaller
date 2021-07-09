@@ -28,14 +28,13 @@ include "./GENERIC"
 ident		SYZKALLER
 options 	COVERAGE
 options 	KCOV
+options 	KASAN
 
-options 	KERN_TLS
 options 	TCPHPTS
 options 	RATELIMIT
 
 options 	DEBUG_VFS_LOCKS
 options 	DIAGNOSTIC
-options 	DEBUG_REDZONE
 `)
 	}
 	if err := osutil.WriteFile(filepath.Join(confDir, confFile), config); err != nil {
