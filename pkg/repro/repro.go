@@ -70,7 +70,8 @@ type StratFunc func(*context, []*prog.LogEntry) (*Result, error)
 const (
 	DefaultStrategy = "default"
 	LastNStrategy   = "lastN"
-	numLastPrograms = 1500
+	numLastPrograms = 500
+	maxChunkLen     = 10
 )
 
 var StratFuncs map[string]StratFunc
@@ -366,7 +367,7 @@ func (ctx *context) lastNPrograms(entries []*prog.LogEntry) (*Result, error) {
 		}
 	}
 
-	ctx.reproLogf(3, "lastNPrograms: last %v programs did not crash", numLastPrograms)
+	ctx.reproLogf(3, "lastNPrograms: last %v programs did not crash", len(lastNEntries))
 	return nil, nil
 }
 
@@ -404,7 +405,7 @@ func (ctx *context) extractProgStrategy(entries []*prog.LogEntry) (*Result, erro
 		}
 
 		// Execute all programs and bisect the log to find multiple guilty programs.
-		res, err = ctx.extractProgBisect(entries, timeout)
+		res, err = ctx.extractProgBisect(entries[len(entries)-numLastPrograms:], timeout)
 		if err != nil {
 			return nil, err
 		}
@@ -805,11 +806,24 @@ again:
 		return nil, nil
 	}
 	ctx.reproLogf(3, "bisect: guilty chunks: %v", chunksToStr(guilty))
-	for i, chunk := range guilty {
-		if len(chunk) == 1 {
-			continue
-		}
 
+	i := 0
+	chunk := guilty[i]
+	pass := true
+
+	for idx, ichunk := range guilty {
+		// pass if all chunks are small enough
+		if len(ichunk) > maxChunkLen {
+			pass = false
+		}
+		// get chunk of maxiumum length
+		if len(ichunk) > len(chunk) {
+			chunk = ichunk
+			i = idx
+		}
+	}
+
+	if !pass {
 		guilty1 := guilty[:i]
 		guilty2 := guilty[i+1:]
 		ctx.reproLogf(3, "bisect: guilty chunks split: %v, <%v>, %v",
