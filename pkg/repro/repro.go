@@ -70,6 +70,7 @@ type StratFunc func(*context, []*prog.LogEntry) (*Result, error)
 const (
 	DefaultStrategy = "default"
 	LastNStrategy   = "lastN"
+	ReorderStrategy = "reorder"
 	numLastPrograms = 1500
 )
 
@@ -77,8 +78,9 @@ var StratFuncs map[string]StratFunc
 
 func init() {
 	StratFuncs = make(map[string]StratFunc)
-	StratFuncs[DefaultStrategy] = (*context).extractProgStrategy
+	StratFuncs[DefaultStrategy] = (*context).defaultStrategy
 	StratFuncs[LastNStrategy] = (*context).lastNPrograms
+	StratFuncs[ReorderStrategy] = (*context).reorderStrategy
 }
 
 func Run(crashLog []byte, cfg *mgrconfig.Config, features *host.Features, reporter report.Reporter,
@@ -370,7 +372,7 @@ func (ctx *context) lastNPrograms(entries []*prog.LogEntry) (*Result, error) {
 	return nil, nil
 }
 
-func (ctx *context) extractProgStrategy(entries []*prog.LogEntry) (*Result, error) {
+func getLastEntries(entries []*prog.LogEntry) []*prog.LogEntry {
 	// Extract last program on every proc.
 	procs := make(map[int]int)
 	for i, ent := range entries {
@@ -385,7 +387,46 @@ func (ctx *context) extractProgStrategy(entries []*prog.LogEntry) (*Result, erro
 	for i := len(indices) - 1; i >= 0; i-- {
 		lastEntries = append(lastEntries, entries[indices[i]])
 	}
+	return lastEntries
+}
 
+func (ctx *context) reorderStrategy(entries []*prog.LogEntry) (*Result, error) {
+	lastEntries := getLastEntries(entries)
+	for _, timeout := range ctx.testTimeouts {
+		// Execute each program separately to detect simple crashes caused by a single program.
+		// Programs are executed in reverse order, usually the last program is the guilty one.
+		res, err := ctx.extractProgSingle(lastEntries, timeout)
+		if err != nil {
+			return nil, err
+		}
+		if res != nil {
+			ctx.reproLogf(3, "found reproducer with %d syscalls", len(res.Prog.Calls))
+			return res, nil
+		}
+	}
+	// Don't try bisecting if there's only one entry.
+	if len(entries) == 1 {
+		ctx.reproLogf(0, "failed to extract reproducer")
+		return nil, nil
+	}
+	for _, timeout := range ctx.testTimeouts {
+		// Execute all programs and bisect the log to find multiple guilty programs.
+		res, err := ctx.extractProgBisect(entries, timeout)
+		if err != nil {
+			return nil, err
+		}
+		if res != nil {
+			ctx.reproLogf(3, "found reproducer with %d syscalls", len(res.Prog.Calls))
+			return res, nil
+		}
+	}
+
+	ctx.reproLogf(0, "failed to extract reproducer")
+	return nil, nil
+}
+
+func (ctx *context) defaultStrategy(entries []*prog.LogEntry) (*Result, error) {
+	lastEntries := getLastEntries(entries)
 	for _, timeout := range ctx.testTimeouts {
 		// Execute each program separately to detect simple crashes caused by a single program.
 		// Programs are executed in reverse order, usually the last program is the guilty one.
