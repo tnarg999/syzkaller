@@ -42,6 +42,7 @@ var (
 	flagConfig = flag.String("config", "", "configuration file")
 	flagDebug  = flag.Bool("debug", false, "dump all VM output to console")
 	flagBench  = flag.String("bench", "", "write execution statistics into this file periodically")
+	flagHub    = flag.Bool("hub", false, "run syz-manager suited to interact with syz-hub")
 )
 
 type Manager struct {
@@ -447,6 +448,9 @@ func (mgr *Manager) preloadCorpus() {
 	}
 	mgr.corpusDB = corpusDB
 
+	if *flagHub {
+		return
+	}
 	if seedDir := filepath.Join(mgr.cfg.Syzkaller, "sys", mgr.cfg.TargetOS, "test"); osutil.IsExist(seedDir) {
 		seeds, err := ioutil.ReadDir(seedDir)
 		if err != nil {

@@ -57,7 +57,11 @@ type HubManagerView interface {
 
 func (hc *HubConnector) loop() {
 	var hub *rpctype.RPCClient
-	for ; ; time.Sleep(10 * time.Minute) {
+	timeout := 10 * time.Minute
+	if *flagHub {
+		timeout = 3 * time.Minute
+	}
+	for ; ; time.Sleep(timeout) {
 		corpus, repros := hc.mgr.getMinimizedCorpus()
 		hc.newRepros = append(hc.newRepros, repros...)
 		if hub == nil {
